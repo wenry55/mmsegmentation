@@ -4,15 +4,34 @@ import os
 import cv2
 from argparse import ArgumentParser
 
+from datetime import datetime
 
+zoo = {
+        'pspnet': {
+            'config': 'configs/pspnet/pspnet_r101-d8_512x512_40k_voc12aug.py',
+            'checkpoint': 'checkpoints/pspnet_r101-d8_512x512_40k_voc12aug_20200613_161222-bc933b18.pth'
+        },
+        'deeplabv3': {
+            'config': 'configs/deeplabv3/deeplabv3_r101-d8_512x512_40k_voc12aug.py',
+            'checkpoint': 'checkpoints/deeplabv3_r101-d8_512x512_40k_voc12aug_20200613_161432-0017d784.pth'
+        },
+        'dlc59': {
+            'config': 'configs/deeplabv3/deeplabv3_r101-d8_480x480_80k_pascal_context_59.py',
+            'checkpoint': 'checkpoints/deeplabv3_r101-d8_480x480_80k_pascal_context_59_20210416_113002-26303993.pth'
+        },
+        'psanet': {
+            'config': 'configs/psanet/psanet_r101-d8_512x512_20k_voc12aug.py',
+            'checkpoint': 'checkpoints/psanet_r101-d8_512x512_20k_voc12aug_20200617_110624-946fef11.pth'
+        }
+}
+
+def get_model_files(zoo_id):
+    return zoo[zoo_id]['config'], zoo[zoo_id]['checkpoint']
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument('det_config', help='Config file for detection')
-    parser.add_argument('det_checkpoint', help='Checkpoint file for detection')
-    parser.add_argument('pose_config', help='Config file for pose')
-    parser.add_argument('pose_checkpoint', help='Checkpoint file for pose')
     parser.add_argument('--video-path', type=str, help='Video path')
+    parser.add_argument('--out-video-root', type=str, default='.', help='Output directory')
     parser.add_argument(
         '--show',
         action='store_true',
@@ -23,32 +42,31 @@ def main():
 
     save_out_video=True
 
-    config_file = 'configs/pspnet/pspnet_r101-d8_512x512_40k_voc12aug.py'
-    checkpoint_file = 'checkpoints/pspnet_r101-d8_512x512_40k_voc12aug_20200613_161222-bc933b18.pth'
+    config_file, checkpoint_file = get_model_files('psanet')
 
     # build the model from a config file and a checkpoint file
     model = init_segmentor(config_file, checkpoint_file, device='cuda:0')
+    tot_frames = 0
 
-    #img = 'test.jpg'  # or img = mmcv.imread(img), which will only load it once
-    #result = inference_segmentor(model, img)
-    #model.show_result(img, result, out_file='result.jpg', opacity=0.5)
-
-    # test a video and show the results
-    
-    video = mmcv.VideoReader('video.mp4')
+    video = mmcv.VideoReader(args.video_path)
     cap = None
+    fps = None
     if save_out_video:
         cap = cv2.VideoCapture(args.video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
+        print('video fps = ', fps)
         size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         videoWriter = cv2.VideoWriter(os.path.join(args.out_video_root, f'vis_{os.path.basename(args.video_path)}'), fourcc, fps, size)
 
     for frame in video:
-        result = inference_segmentor(model, frame)
-        vis_img = model.show_result(frame, result, opacity=0.5)
-        if save_out_video:
+        tot_frames += 1
+        if tot_frames % (fps/2) == 0:
+            result = inference_segmentor(model, frame)
+            vis_img = model.show_result(frame, result, opacity=0.5)
             videoWriter.write(vis_img)
+            if tot_frames % 100 == 0:
+                print(datetime.now(), tot_frames)
 
     cap.release()
     if save_out_video:
